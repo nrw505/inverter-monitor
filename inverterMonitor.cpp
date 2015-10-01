@@ -759,7 +759,7 @@ void setup() {
 #if 0
   debugSerial.println(F("Testing data write..."));
   sample_inverter = 0;
-    inverters[0].serial_len=1;
+  inverters[0].serial_len=1;
   inverters[0].serial[0] = 'T';
   sample_timestamp=read_current_time_unix_epoch();
   client.connect(LOG_HOST, LOG_PORT);
