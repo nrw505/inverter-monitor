@@ -10,12 +10,12 @@
  * The Unix time is returned, that is, seconds from 1970-01-01T00:00.
  */
 #include <UIPUdp.h>
+#include <AltSoftSerial.h>
+extern AltSoftSerial debugSerial;
 
-unsigned long ntpUnixTime (UDP &udp)
+unsigned long ntpUnixTime (UDP &udp, IPAddress &server)
 {
   static int udpInited = udp.begin(123); // open socket on arbitrary port
-
-  const char timeServer[] = "pool.ntp.org";  // NTP server
 
   // Only the first four bytes of an outgoing NTP packet need to be set
   // appropriately, the rest can be whatever.
@@ -29,10 +29,19 @@ unsigned long ntpUnixTime (UDP &udp)
   udp.flush();
 
   // Send an NTP request
-  if (! (udp.beginPacket(timeServer, 123) // 123 is the NTP port
-	 && udp.write((byte *)&ntpFirstFourBytes, 48) == 48
-	 && udp.endPacket()))
+  if (! udp.beginPacket(server, 123)) { // 123 is the NTP port
+    return 0;
+  }
+  if (! udp.write((byte *)&ntpFirstFourBytes, 4) == 4) {
+    return 0;
+  }
+  uint8_t b = 0;
+  for (uint8_t i = 0; i < 44; i++) {
+	  udp.write(&b, 1);
+  }
+  if (! udp.endPacket()) {
     return 0;				// sending request failed
+  }
 
   // Wait for response; check every pollIntv ms up to maxPoll times
   const int pollIntv = 150;		// poll every this many ms

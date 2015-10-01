@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#define UIP_CONF_MAX_LISTENPORTS 2
+
 #include <Dns.h>
 #include <ethernet_comp.h>
 #include <UIPClient.h>
@@ -15,10 +17,20 @@
 #include <AltSoftSerial.h>
 
 #include <avr/pgmspace.h>
+#include <avr/io.h>
 
 #include "credentials.h"
 
-#define RTC_ADDR 0xe8
+FUSES = {
+  // External crystal, full-swing oscillator, slow start up.
+  .low = (FUSE_CKSEL3),
+  // SPI programming enabled, Boot area starts 0x3800, boot vector 0x0000
+  .high = (FUSE_SPIEN | FUSE_BOOTSZ1 | FUSE_BOOTSZ0),
+  // Brown-out detect at 4.3V
+  .extended = (FUSE_BODLEVEL1 | FUSE_BODLEVEL0),
+};
+
+#define RTC_ADDR 0x68
 
 #define INVERTER_MONITOR_VERSION "0.1"
 #define MAX_NUM_INVERTERS 2
@@ -32,6 +44,7 @@
 
 uint8_t mac[] = { 0xde, 0xad, 0xbe, 0xef, 0xfe, 0xed};
 uint8_t myIP[] = {192, 168, 0, 50};
+IPAddress ntpServer(192,168,0,1);
 
 uint8_t myAddress;
 
@@ -213,7 +226,7 @@ uint32_t read_current_time_unix_epoch() {
   Wire.beginTransmission(RTC_ADDR);
   Wire.write(0x00);
   Wire.endTransmission();
-  Wire.requestFrom(0xe8, 7);
+  Wire.requestFrom(RTC_ADDR, 7);
 
   // read seconds
   b = Wire.read();
@@ -248,7 +261,11 @@ uint32_t read_current_time_unix_epoch() {
 }
 
 void sync_rtc() {
-  uint32_t time = ntpUnixTime(udpNtp);
+  uint32_t time = ntpUnixTime(udpNtp, ntpServer);
+
+  if (time == 0)
+    // NTP failure, don't update clock
+    return;
 
   uint8_t hh, mm, ss;
   uint8_t y, m, d;
@@ -473,7 +490,7 @@ uint32_t sample_timestamp;
 uint8_t sample_inverter;
 
 void handle_data_start(const char *name) {
-  client.print(F("pvmonitor."));
+  client.print(F("put pvmonitor."));
   client.print(name);
   client.write(' ');
   client.print(sample_timestamp);
@@ -544,7 +561,7 @@ void parse_data_bytes(uint8_t tag, uint8_t v1, uint8_t v2) {
     scaleFactor = pgm_read_float(&(scale_factors[tag]));
 
     if (tmp[0] == 'H' || tmp[0] == 'L') {
-      parse_double_width_data_half(tmp, v, scaleFactor);
+      return parse_double_width_data_half(tmp, v, scaleFactor);
     }
   } else {
     // Not a tag we know about; make a name (tag_%d) without
@@ -584,7 +601,7 @@ void process_inverter_data() {
 }
 
 void handle_good_packet() {
-#if 0
+#if 1
   debugSerial.print(F("HANDLE: "));
   debugSerial.print(F("S="));
   debugSerial.print(RCV_SOURCE);
@@ -723,6 +740,9 @@ void start_check_inverter(uint8_t inverterNum) {
 }
 
 void setup() {
+  // I2C connected to RTC
+  Wire.begin();
+
   // RS-485 connection to inverter - Pins 1&2 (D0/D1) / PD0&P1D
   Serial.begin(9600); 
 
@@ -733,22 +753,15 @@ void setup() {
 
   UIPEthernet.begin(mac, myIP);
 
-  delay(1000);
-  debugSerial.println(F("start_rtc"));
   start_rtc();
-  delay(1000);
-
-  debugSerial.println(F("start_rtc"));
-  delay(1000);
   sync_rtc();
-  delay(1000);
-  
-  debugSerial.println(F("Testing data write..."));
-  //sample_timestamp = read_current_time_unix_epoch();
 
+#if 0
+  debugSerial.println(F("Testing data write..."));
   sample_inverter = 0;
-  inverters[0].serial_len=1;
+    inverters[0].serial_len=1;
   inverters[0].serial[0] = 'T';
+  sample_timestamp=read_current_time_unix_epoch();
   client.connect(LOG_HOST, LOG_PORT);
   parse_data_bytes(0, 0x00, 0xd7);
   parse_data_bytes(13, 0x03, 0xdb);
@@ -763,10 +776,13 @@ void setup() {
   parse_data_bytes(69, 0xff, 0xff);
   parse_data_bytes(71, 0x00, 0x00);
   parse_data_bytes(72, 0x08, 0x22);
+  delay(5000);
+  sample_timestamp=read_current_time_unix_epoch();
   parse_data_bytes(73, 0x00, 0x00);
   parse_data_bytes(74, 0x00, 0xdb);
   client.stop();
   debugSerial.println(F("done."));
+#endif
 
   last_new_inverter_check = 0;
   for (int i = 0; i < MAX_NUM_INVERTERS; i++) {
