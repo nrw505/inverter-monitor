@@ -22,4 +22,4 @@ https://github.com/sudar/Arduino-Makefile). It expects it to be in
 update the Makefile to reference wherever you have it installed.
 
 If you use the schematic and/or board in eagle/ then the fuse bits you
-will need to set on your ATmega328 are: low= high= ext=
+will need to set on your ATmega328 are: low=0xf7 high=0xd9 ext=0x04
