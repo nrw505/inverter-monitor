@@ -22,6 +22,3 @@ include ../Arduino-Makefile/Arduino.mk
 
 credentials.h:	credentials.h_example
 	cp credentials.h_example credentials.h
-
-program:	build-uno/inverterMonitor.hex
-	/Applications/Arduino-1.0.5.app/Contents/Resources/Java/hardware/tools/avr/bin/avrdude -C /Applications/Arduino-1.0.5.app/Contents/Resources/Java/hardware/tools/avr/etc/avrdude.conf -b 19200 -p atmega328 -P /dev/tty.usbmodem1d11 -c avrisp -U flash:w:build-uno/inverterMonitor.hex
